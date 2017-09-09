@@ -1,5 +1,6 @@
 package com.bromberger.scalagraphs
 
+import com.bromberger.scalagraphs.Util._
 import com.bromberger.sparsematrices.SparseMatrixCSR
 import de.ummels.prioritymap.PriorityMap
 
@@ -94,16 +95,8 @@ object Graph {
     Graph(SparseMatrixCSR(rp, ci))
   }
 }
+
 object TestSparseMatrixCSR{
-
-  def time[R](block: => R): R = {
-    val t0 = System.nanoTime()
-    val result = block    // call-by-name
-    val t1 = System.nanoTime()
-    println("Elapsed time: " + (t1 - t0) + "ns")
-    result
-  }
-
   def main(args: Array[String]) {
     // (1) use the primary constructor
 
@@ -189,14 +182,8 @@ object TestSparseMatrixCSR{
     val d1 = g2.dijkstra(0, allpaths=true)
     println("d1 = " + d1)
 
-    println("LOADING edges.csv")
-    val bufferedSource = io.Source.fromFile("/Users/seth/dev/scala/ScalaGraphs/edges.csv")
-    val edgeList = bufferedSource.getLines.map(line => {
-      val cols = line.split(",").map(_.trim)
-      (cols(0).toInt, cols(1).toInt)
-    }).toArray
-    bufferedSource.close
-    println("Loaded edges.csv")
+    val edgeList = loadCsvAsEdgeList("/Users/seth/dev/scala/ScalaGraphs/edges.csv")
+
     val g3 = time { Graph(edgeList) }
     println("created graph")
     println("g3 = " + g3)
