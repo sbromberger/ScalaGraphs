@@ -2,7 +2,10 @@ package com.bromberger.scalagraphs
 
 import com.bromberger.sparsematrices.SparseMatrixCSR
 import de.ummels.prioritymap.PriorityMap
-case class DijkstraState(parents:Array[Int], dists:Array[Double], predecessors:Array[Array[Int]])
+
+case class DijkstraState(dists:Map[Int, Double], parents:Map[Int, Int], predecessors:Map[Int, List[Int]]) {
+  override def toString():String = "DijkstraState with " + dists.size + " dists"
+}
 
 case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrixCSR, private val _props:Array[Array[Any]]) {
   val ne:Int = fMat.nnz
@@ -41,24 +44,34 @@ case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrix
   def inDegreeCentrality(normalize:Boolean=false):Iterator[Double] = _degreeCentrality(normalize, inDegree)
   def outDegreeCentrality(normalize:Boolean=false):Iterator[Double] = _degreeCentrality(normalize, outDegree)
 
-  def dijkstra(source: Int, distfn:(Int, Int) => Double = (_, _) => 1):
-  (Map[Int, Double], Map[Int, Int]) = {
-    def go(PQ: PriorityMap[Int, Double], res: Map[Int, Double], pred: Map[Int, Int]):
-    (Map[Int, Double], Map[Int, Int]) =
-      if (PQ.isEmpty) (res, pred)
+  def dijkstra(source: Int, distfn:(Int, Int) => Double = (_, _) => 1, allpaths:Boolean=false):
+  DijkstraState = {
+    def go(PQ: PriorityMap[Int, Double], res: Map[Int, Double], parents: Map[Int, Int], preds:scala.collection.mutable.Map[Int, List[Int]]):
+    (Map[Int, Double], Map[Int, Int], Map[Int, List[Int]]) =
+      if (PQ.isEmpty) (res, parents, preds.toMap)
       else {
         val (node, cost) = PQ.head
         val neighbors = outNeighbors(node)
-            .filterNot(res.contains)
             .map(v => (v, distfn(node, v)))
             .filter(nc => (cost + nc._2) < PQ.getOrElse(nc._1, Double.PositiveInfinity)).map(nc =>
-            (nc._1, cost + nc._2)).toMap
+            (nc._1, cost + nc._2))
 
-        val preds = neighbors.mapValues(_ => node)
-        go(PQ.tail ++ neighbors, res + (node -> cost), pred ++ preds)
+        val neighborMap = neighbors.filterNot(v => res.contains(v._1)).toMap
+        val predMap = neighbors.map(_._1)
+        if (allpaths)
+          for (p <- predMap) {
+            preds(p) = preds(p) :+ node
+          }
+
+        val parent = neighborMap.mapValues(_ => node)
+
+        go(PQ.tail ++ neighborMap, res + (node -> cost), parents ++ parent, preds)
       }
 
-    go(PriorityMap(source -> 0), Map.empty, Map.empty)
+    val predMap = scala.collection.mutable.Map[Int, List[Int]]()
+    vertices.foreach(v => predMap += (v -> List.empty[Int]))
+    val (dists, parents, preds) = go(PriorityMap(source -> 0), Map.empty, Map.empty, predMap)
+    DijkstraState(dists, parents, preds)
   }
 }
 
@@ -78,7 +91,6 @@ object Graph {
 
     val rp = Array(0) ++ elemsPerRow.scanLeft(0)(_ + _).tail
     val ci = ds.toArray
-
     Graph(SparseMatrixCSR(rp, ci))
   }
 }
@@ -172,11 +184,11 @@ object TestSparseMatrixCSR{
     val g2 = Graph(z)
     println("g2 = " + g2)
     g2.edges.foreach(println)
-    val d1 = g2.dijkstra(0)
+    val d1 = g2.dijkstra(0, allpaths=true)
     println("d1 = " + d1)
 
     println("LOADING edges.csv")
-    val bufferedSource = io.Source.fromFile("/Users/bromberger1/dev/scala/ScalaGraphs/edges.csv")
+    val bufferedSource = io.Source.fromFile("/Users/seth/dev/scala/ScalaGraphs/edges.csv")
     val edgeList = bufferedSource.getLines.map(line => {
       val cols = line.split(",").map(_.trim)
       (cols(0).toInt, cols(1).toInt)
@@ -186,8 +198,15 @@ object TestSparseMatrixCSR{
     val g3 = time { Graph(edgeList) }
     println("created graph")
     println("g3 = " + g3)
+    println("g3(2) outdegree= " + g3.outDegree(2))
+    println("g3(2) indegree = " + g3.inDegree(2))
     val dijk = time { g3.dijkstra(0) }
+    val dijk2 = time { g3.dijkstra(0, allpaths=true) }
 
+    val vs = Array(0, 1, 2, 3, 4, 5, 6)
+    val dijkm1 = time { vs.par.map(v => g3.dijkstra(v, allpaths=false)) }
+    val dijkm2 = time { vs.par.map(v => g3.dijkstra(v, allpaths=true)) }
+    println("dijkm = " + dijkm1)
 
 
   }
