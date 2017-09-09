@@ -26,7 +26,7 @@ case class SparseMatrixCSR(private val rowPtr:Array[Int], private val colVal:Arr
     val rpFrequencyMap= revIndices.map(_._1).groupBy(identity).mapValues(_.size)
     //    println("transpose: rpFrequencyMap = " + rpFrequencyMap)
     val rpFreq = ci.indices.map(i => rpFrequencyMap.getOrElse(i, 0))
-    val rp = Array(0)++ rpFreq.scanLeft(0)(_ + _).tail
+    val rp = Array(0) ++ rpFreq.scanLeft(0)(_ + _).tail
 
     //    println("transpose: rp = " + rp)
 
@@ -41,11 +41,11 @@ case class SparseMatrixCSR(private val rowPtr:Array[Int], private val colVal:Arr
       val thatr = that.getRow(i)
       (thisr ++ thatr).distinct.sorted
     })
-    val rp = Array(0) ++ rows.map(_.length).scanLeft(0)(_ + _).tail
+    val rp = rows.map(_.length).scanLeft(0)(_ + _).toArray
     val ci = rows.flatten.toArray
 
-    println("  add rp = " + rp)
-    println("  add ci = " + ci)
+//    println("  add rp = " + rp)
+//    println("  add ci = " + ci)
 
     SparseMatrixCSR(rp, ci)
   }
@@ -62,7 +62,7 @@ case class SparseMatrixCSR(private val rowPtr:Array[Int], private val colVal:Arr
 
 object SparseMatrixCSR {
   def apply(m:Array[Array[Int]]):SparseMatrixCSR = {
-    val rp = Array(0) ++ m.map(_.count(_ != 0)).scanLeft(0)(_ + _).tail
+    val rp = m.map(_.count(_ != 0)).scanLeft(0)(_ + _)
     val ci = m.flatMap(_.zipWithIndex.filter(_._1 != 0).map(_._2))
     SparseMatrixCSR(rp, ci)
   }

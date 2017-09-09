@@ -4,7 +4,7 @@ import com.bromberger.sparsematrices.SparseMatrixCSR
 import de.ummels.prioritymap.PriorityMap
 
 case class DijkstraState(dists:Map[Int, Double], parents:Map[Int, Int], predecessors:Map[Int, List[Int]]) {
-  override def toString():String = "DijkstraState with " + dists.size + " dists"
+  override def toString:String = "DijkstraState with " + dists.size + " dists"
 }
 
 case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrixCSR, private val _props:Array[Array[Any]]) {
@@ -60,7 +60,7 @@ case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrix
         val predMap = neighbors.map(_._1)
         if (allpaths)
           for (p <- predMap) {
-            preds(p) = preds(p) :+ node
+            preds(p) = node :: preds(p)
           }
 
         val parent = neighborMap.mapValues(_ => node)
@@ -108,16 +108,18 @@ object TestSparseMatrixCSR{
     // (1) use the primary constructor
 
     // (2) use a secondary constructor
+    println("Starting")
     val matrix = Array.ofDim[Int](4,4)
     matrix(1)(0) = 5
     matrix(1)(1) = 8
     matrix(2)(2) = 3
     matrix(3)(1) = 6
     val B = SparseMatrixCSR(matrix)
-
+    println("Done with B")
     val C = SparseMatrixCSR(matrix.transpose)
-
+    println("Done with C")
     val D = B.transpose
+    println("Done with D")
     println("B = " + B)
     println("C = " + C)
     println("D = " + D)
@@ -200,15 +202,13 @@ object TestSparseMatrixCSR{
     println("g3 = " + g3)
     println("g3(2) outdegree= " + g3.outDegree(2))
     println("g3(2) indegree = " + g3.inDegree(2))
-    val dijk = time { g3.dijkstra(0) }
-    val dijk2 = time { g3.dijkstra(0, allpaths=true) }
+    val x1 = time { g3.dijkstra(0) }
+    val x2 = time { g3.dijkstra(0, allpaths=true) }
 
-    val vs = Array(0, 1, 2, 3, 4, 5, 6)
-    val dijkm1 = time { vs.par.map(v => g3.dijkstra(v, allpaths=false)) }
-    val dijkm2 = time { vs.par.map(v => g3.dijkstra(v, allpaths=true)) }
+    val vs = 0.to(6)
+    val dijkm1 = time { vs.par.map(v => g3.dijkstra(v)) }
+    val x3 = time { vs.par.map(v => g3.dijkstra(v, allpaths=true)) }
     println("dijkm = " + dijkm1)
-
-
   }
 
 }
