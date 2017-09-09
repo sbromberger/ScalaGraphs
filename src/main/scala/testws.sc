@@ -7,6 +7,12 @@ matrix(1)(1) = 8
 matrix(2)(2) = 3
 matrix(3)(1) = 6
 
+val P = scala.collection.mutable.SortedMap[(Double, Int), Int]()
+
+P.update((0.2, 1), 1)
+P.update((0.1, 2), 2)
+P.remove(P.take(1).firstKey)
+P
 // (0, 1)
 // (1, 1)
 // (2, 2)

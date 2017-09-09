@@ -1,8 +1,6 @@
 package com.bromberger.sparsematrices
 
-import scala.collection.parallel.immutable.ParVector
-
-case class SparseMatrixCSR(private val rowPtr:ParVector[Int], private val colVal:ParVector[Int]) {
+case class SparseMatrixCSR(private val rowPtr:Array[Int], private val colVal:Array[Int]) {
 
   def apply(r: Int, c: Int): Int = {
     val rStart = rowPtr(r)
@@ -23,36 +21,51 @@ case class SparseMatrixCSR(private val rowPtr:ParVector[Int], private val colVal
   def transpose:SparseMatrixCSR = {
     val revIndices = nzIndices.map(x => (x._2, x._1)).toList.sortBy(_._1)
     //    println("transpose: revIndices = " + revIndices)
-    val ci = revIndices.map(_._2).toVector
+    val ci = revIndices.map(_._2).toArray
     //    println("transpose: ci = " + ci)
     val rpFrequencyMap= revIndices.map(_._1).groupBy(identity).mapValues(_.size)
     //    println("transpose: rpFrequencyMap = " + rpFrequencyMap)
     val rpFreq = ci.indices.map(i => rpFrequencyMap.getOrElse(i, 0))
-    val rp = Vector(0)++ rpFreq.scanLeft(0)(_ + _).tail
+    val rp = Array(0)++ rpFreq.scanLeft(0)(_ + _).tail
 
     //    println("transpose: rp = " + rp)
 
 
-    SparseMatrixCSR(rp.par, ci.par)
+    SparseMatrixCSR(rp, ci)
   }
 
-  def getRow(r:Int):ParVector[Int] = {
+  def +(that:SparseMatrixCSR):SparseMatrixCSR = {
+    assert(size == that.size)
+    val rows = 0.until(size._1).map(i => {
+      val thisr = this.getRow(i)
+      val thatr = that.getRow(i)
+      (thisr ++ thatr).distinct.sorted
+    })
+    val rp = Array(0) ++ rows.map(_.length).scanLeft(0)(_ + _).tail
+    val ci = rows.flatten.toArray
+
+    println("  add rp = " + rp)
+    println("  add ci = " + ci)
+
+    SparseMatrixCSR(rp, ci)
+  }
+  def getRow(r:Int):Array[Int] = {
     val rStart = rowPtr(r)
     val rEnd = rowPtr(r + 1)
     colVal.slice(rStart, rEnd)
   }
 
-  def rows:Iterator[ParVector[Int]] = 0.until(this.size._1).toIterator.map(r => getRow(r))
+  def rows:Iterator[Array[Int]] = 0.until(this.size._1).toIterator.map(getRow)
 
-  def toVectors:Vector[ParVector[Int]] = rows.toVector
+  def toArrays:Array[Array[Int]] = rows.toArray
 }
 
 object SparseMatrixCSR {
   def apply(m:Array[Array[Int]]):SparseMatrixCSR = {
-    val rp = Vector(0) ++ m.map(_.count(_ != 0)).scanLeft(0)(_ + _).tail
-    val ci = m.flatMap(_.zipWithIndex.filter(_._1 != 0).map(_._2)).toVector
+    val rp = Array(0) ++ m.map(_.count(_ != 0)).scanLeft(0)(_ + _).tail
+    val ci = m.flatMap(_.zipWithIndex.filter(_._1 != 0).map(_._2))
     SparseMatrixCSR(rp, ci)
   }
 
-  def apply(rp:Seq[Int], ci:Seq[Int]):SparseMatrixCSR = SparseMatrixCSR(rp.toVector.par, ci.toVector.par)
+  def apply(rp:Seq[Int], ci:Seq[Int]):SparseMatrixCSR = SparseMatrixCSR(rp, ci)
 }

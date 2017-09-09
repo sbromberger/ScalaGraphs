@@ -1,6 +1,7 @@
-name := "graphs"
+name := "scalagraphs"
 
 version := "0.1"
 
 scalaVersion := "2.12.3"
-        
+
+libraryDependencies += "de.ummels" %% "scala-prioritymap" % "1.0.0"

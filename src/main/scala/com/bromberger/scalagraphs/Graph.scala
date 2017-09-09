@@ -1,23 +1,10 @@
 package com.bromberger.scalagraphs
 
-import scala.collection.parallel.immutable.ParVector
-import scala.collection.mutable.ArrayBuffer
 import com.bromberger.sparsematrices.SparseMatrixCSR
+import de.ummels.prioritymap.PriorityMap
+case class DijkstraState(parents:Array[Int], dists:Array[Double], predecessors:Array[Array[Int]])
 
-case class DijkstraState(parents:Vector[Int], dists:Vector[Double], predecessors:Vector[Vector[Int]])
-
-//case class PQ(els:ArrayBuffer[(Int, Double)]) {
-//  private val pris = els.map(_._2)
-//
-//  def enqueue(x:(Int,Double)) = {
-//    els.map(_._2)
-//    els += x
-//  }
-//  def dequeue = ???
-//
-//}
-
-case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrixCSR, private val _props:Vector[Vector[Any]]) {
+case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrixCSR, private val _props:Array[Array[Any]]) {
   val ne:Int = fMat.nnz
   val nv:Int = fMat.size._1
 
@@ -28,12 +15,15 @@ case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrix
   def hasEdge(u:Int, v:Int):Boolean = fMat(u, v) >= 0
 
   def vertices:Iterator[Int] = 0.until(nv).toIterator
-  def outNeighbors(v:Int):ParVector[Int] = fMat.getRow(v)
-  def outNeighbors: Iterator[ParVector[Int]] = fMat.rows
-  def inNeighbors(v:Int):ParVector[Int] = bMat.getRow(v)
-  def inNeighbors: Iterator[ParVector[Int]] = bMat.rows
+  def outNeighbors(v:Int):Array[Int] = fMat.getRow(v)
+  def outNeighbors: Iterator[Array[Int]] = fMat.rows
+  def inNeighbors(v:Int):Array[Int] = bMat.getRow(v)
+  def inNeighbors: Iterator[Array[Int]] = bMat.rows
 
-//  def outNeighbors(u:Int) =
+  def toUndirected:Graph = {
+    val combined = fMat + bMat
+    Graph(combined, combined, _props)
+  }
   override def toString:String = "{" + nv + ", " + ne + "} Graph"
 
 
@@ -51,63 +41,56 @@ case class Graph(private val fMat:SparseMatrixCSR, private val bMat:SparseMatrix
   def inDegreeCentrality(normalize:Boolean=false):Iterator[Double] = _degreeCentrality(normalize, inDegree)
   def outDegreeCentrality(normalize:Boolean=false):Iterator[Double] = _degreeCentrality(normalize, outDegree)
 
+  def dijkstra(source: Int, distfn:(Int, Int) => Double = (_, _) => 1):
+  (Map[Int, Double], Map[Int, Int]) = {
+    def go(PQ: PriorityMap[Int, Double], res: Map[Int, Double], pred: Map[Int, Int]):
+    (Map[Int, Double], Map[Int, Int]) =
+      if (PQ.isEmpty) (res, pred)
+      else {
+        val (node, cost) = PQ.head
+        val neighbors = outNeighbors(node)
+            .filterNot(res.contains)
+            .map(v => (v, distfn(node, v)))
+            .filter(nc => (cost + nc._2) < PQ.getOrElse(nc._1, Double.PositiveInfinity)).map(nc =>
+            (nc._1, cost + nc._2)).toMap
 
-  def dijkstra(us:Seq[Int], distance:(Int, Int) => Double = (_, _) => 1):DijkstraState = {
-    var dists = scala.collection.mutable.ArrayBuffer.fill(nv)(Double.PositiveInfinity)
-    var parents = scala.collection.mutable.ArrayBuffer.fill(nv)(0)
-    var visited = scala.collection.mutable.ArrayBuffer.fill(nv)(false)
-    var pathcounts = scala.collection.mutable.ArrayBuffer.fill(nv)(0)
-    var predecessors = vertices.map(_ => scala.collection.mutable.ArrayBuffer[Int]()).toVector
-    var H = scala.collection.mutable.PriorityQueue[(Double, Int)]()
-    us.foreach(u => {
-      dists(u) = 0.0
-      pathcounts(u) = 1
-      H.enqueue((0.0, u))
-      visited(u) = true
-    })
+        val preds = neighbors.mapValues(_ => node)
+        go(PQ.tail ++ neighbors, res + (node -> cost), pred ++ preds)
+      }
 
-    while (H.nonEmpty) {
-      val hentry = H.dequeue()
-      val (dist, u) = hentry
-
-      outNeighbors(u).foreach(v => {
-        val alt = if (dists(u) == Double.PositiveInfinity) Double.PositiveInfinity else dists(u) + distance(u, v)
-        if (!visited(v)) {
-          dists(v) = alt
-          parents(v) = u
-          pathcounts(v) += pathcounts(u)
-          visited(v) = true
-          predecessors(v) += u
-
-        }
-      })
-
-    }
-    
-    DijkstraState(Vector(), Vector(), Vector())
+    go(PriorityMap(source -> 0), Map.empty, Map.empty)
   }
 }
 
+
 object Graph {
-  def apply(m:SparseMatrixCSR):Graph = Graph(m, m.transpose, Vector[Vector[Int]]())
-  def apply(m:Array[Array[Int]]):Graph = Graph(SparseMatrixCSR(m), SparseMatrixCSR(m).transpose, Vector[Vector[Int]]())
+  def apply(m:SparseMatrixCSR):Graph = Graph(m, m.transpose, Array.empty)
+  def apply(m:Array[Array[Int]]):Graph = Graph(SparseMatrixCSR(m), SparseMatrixCSR(m).transpose, Array.empty)
   def apply(edgeList:Seq[(Int, Int)]):Graph = {
     val el = edgeList.sorted.distinct
     val ss = el.map(_._1)
     val ds = el.map(_._2)
     val nv = List(ss.max, ds.max).max + 1
 
-    val byrow = el.groupBy(_._1).mapValues(_.map(_._2).sorted)
+    val byrow = el.groupBy(_._1).map{case (k, v) => (k, v.map(_._2).sorted.toArray) }
 
-    val elemsPerRow = 0.until(nv).map(i=>byrow.getOrElse(i, Vector()).length)
+    val elemsPerRow = 0.until(nv).map(i=>byrow.getOrElse(i, Array()).length)
 
-    val rp = Vector(0) ++ elemsPerRow.scanLeft(0)(_ + _).tail
-    val ci = ds.toVector
+    val rp = Array(0) ++ elemsPerRow.scanLeft(0)(_ + _).tail
+    val ci = ds.toArray
 
-    Graph(SparseMatrixCSR(rp.par, ci.par))
+    Graph(SparseMatrixCSR(rp, ci))
   }
 }
 object TestSparseMatrixCSR{
+
+  def time[R](block: => R): R = {
+    val t0 = System.nanoTime()
+    val result = block    // call-by-name
+    val t1 = System.nanoTime()
+    println("Elapsed time: " + (t1 - t0) + "ns")
+    result
+  }
 
   def main(args: Array[String]) {
     // (1) use the primary constructor
@@ -141,8 +124,41 @@ object TestSparseMatrixCSR{
     println("F = " + F)
     println("G = " + G)
 
-    println("E.nzIndices = " + E.nzIndices.toList)
-    println("E.revIndices = " + E.nzIndices.map(x => (x._2, x._1)).toList.sortBy(_._1))
+    val m3 = Array.ofDim[Int](3, 4)
+    m3(0)(2) = 7
+    m3(1)(0) = 5
+    m3(2)(3) = 6
+
+    val H = SparseMatrixCSR(m3)
+    val I = SparseMatrixCSR(m3.transpose)
+    val J = H.transpose
+
+    println("H = " + H)
+    println("I = " + I)
+    println("J = " + J)
+
+
+    val m4 = Array.ofDim[Int](3, 4)
+    m4(0)(0) = 1
+    m4(0)(3) = 2
+    m4(1)(2) = 3
+    m4(2)(2) = 4
+    m4(0)(2) = 7
+    m4(1)(0) = 5
+    m4(2)(3) = 6
+
+
+    val K = SparseMatrixCSR(m4)
+    val L = SparseMatrixCSR(m4.transpose)
+    val M = H.transpose
+
+    println("K = " + K)
+    println("L = " + L)
+    println("M = " + M)
+
+    val N = E + H
+    println("N = " + N)
+    println("N == K = " + (N == K))
 
     val g = Graph(B)
     println("g = " + g)
@@ -152,10 +168,28 @@ object TestSparseMatrixCSR{
     g.outNeighbors.foreach(r => println("out r = " + r))
     g.inNeighbors.foreach(r => println("in r = " + r))
 
-    val z = List((1, 2), (1,2), (1,2), (1,2), (2,1), (3,1), (3,2), (1,1), (3,0) )
+    val z = List((0, 1), (1, 2), (2,3), (3,4), (0,3))
     val g2 = Graph(z)
     println("g2 = " + g2)
     g2.edges.foreach(println)
+    val d1 = g2.dijkstra(0)
+    println("d1 = " + d1)
+
+    println("LOADING edges.csv")
+    val bufferedSource = io.Source.fromFile("/Users/bromberger1/dev/scala/ScalaGraphs/edges.csv")
+    val edgeList = bufferedSource.getLines.map(line => {
+      val cols = line.split(",").map(_.trim)
+      (cols(0).toInt, cols(1).toInt)
+    }).toArray
+    bufferedSource.close
+    println("Loaded edges.csv")
+    val g3 = time { Graph(edgeList) }
+    println("created graph")
+    println("g3 = " + g3)
+    val dijk = time { g3.dijkstra(0) }
+
+
+
   }
 
 }
